@@ -1,33 +1,42 @@
 #!/bin/bash
 set -e
 
+name='base'
+namespace='alpinelib'
+
 declare -A aliases
 aliases=(
-	["3.2"]='latest'
+	["3.3"]='3 latest'
 )
-
-
-which greadlink > /dev/null 2>&1 && cd "$(dirname "$(greadlink -f "$BASH_SOURCE")")" || cd "$(dirname "$(readlink -f "$BASH_SOURCE")")"
 
 versions=( */ )
 versions=( "${versions[@]%/}" )
 
-url='git://github.com/alpine-library/base'
-echo '# maintainer: Ekozan <m@3Ko.fr>'
-
 for version in "${versions[@]}"; do
-	commit="$(cd "$version" && git log -1 --format='format:%H' -- Dockerfile $(awk 'toupper($1) == "COPY" { for (i = 2; i < NF; i++) { print $i } }' Dockerfile))"
+
   fullVersion="$(grep -m1 'ENV ALPINE_VERSION ' "$version/Dockerfile" | cut -d' ' -f3)"
 
 	versionAliases=()
+
 	while [ "$fullVersion" != "$version" -a "${fullVersion%[.-]*}" != "$fullVersion" ]; do
 		versionAliases+=( $fullVersion )
 		fullVersion="${fullVersion%[.-]*}"
 	done
+
 	versionAliases+=( $version ${aliases[$version]} )
 
-	echo
+  cd $version
+  echo "build docker image $version"
+  ID=$(docker build .  | tail -1 | sed 's/.*Successfully built \(.*\)$/\1/')
+  cd ..
+
 	for va in "${versionAliases[@]}"; do
-		echo "$va: ${url}@${commit} $version"
+    echo "TAG image $ID -> $namespace/$name:$va"
+    docker tag -f $ID $namespace/$name:$va
+
+    if [ $PUSH_IMAGE ]; then
+    echo "PUSH image $ID -> $namespace/$name:$va"
+    docker push $namespace/$name:$va
+    fi
 	done
 done
